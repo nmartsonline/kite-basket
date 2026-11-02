@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Kite Basket</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e2dc; --buy:#1f7a4d; --sell:#b23b2e; --accent:#2f5bd3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151514; --card:#1f1f1d; --ink:#ecebe6; --muted:#9a9993; --line:#33332f; --buy:#5cc28f; --sell:#ef7d6f; --accent:#7c9cf5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { margin:6px 0; color:var(--muted); font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:16px; }
+  .leg { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .leg:last-child { border-bottom:0; }
+  .sym { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:14px; word-break:break-all; }
+  .side { font-weight:600; font-size:13px; }
+  .BUY { color:var(--buy); } .SELL { color:var(--sell); }
+  .px { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .net { display:flex; justify-content:space-between; font-weight:600; margin-top:10px; }
+  label { display:flex; gap:10px; align-items:flex-start; margin-top:16px; font-size:14px; }
+  button { width:100%; margin-top:14px; padding:14px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; }
+  button:disabled { opacity:.45; }
+  .err { color:var(--sell); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kite basket</h1>
+  <p>Opens Kite with these legs filled in. You check the prices and place it there yourself.</p>
+  <div id="out"></div>
+</main>
+<script>
+(function () {
+  var out = document.getElementById("out");
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function fail(msg) { out.appendChild(el("p", "err", msg)); }
+
+  var params = {};
+  location.hash.replace(/^#/, "").split("&").forEach(function (kv) {
+    var i = kv.indexOf("="); if (i > 0) params[kv.slice(0, i)] = kv.slice(i + 1);
+  });
+  if (!params.k || !params.d) return fail("This link has no basket in it. Open it from the daily report.");
+  var orders;
+  try {
+    var b64 = params.d.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    orders = JSON.parse(atob(b64));
+  } catch (e) { return fail("The basket in this link could not be read."); }
+  if (!Array.isArray(orders) || !orders.length) return fail("The basket is empty.");
+
+  var card = el("div", "card"), net = 0;
+  orders.forEach(function (o) {
+    var row = el("div", "leg"), left = el("div"), right = el("div", "px");
+    left.appendChild(el("div", "side " + o.transaction_type, o.transaction_type + " · " + o.order_type + " · " + o.product));
+    left.appendChild(el("div", "sym", o.tradingsymbol));
+    right.appendChild(el("div", null, Number(o.price).toFixed(2)));
+    right.appendChild(el("div", "side", "qty " + o.quantity));
+    row.appendChild(left); row.appendChild(right); card.appendChild(row);
+    net += (o.transaction_type === "SELL" ? 1 : -1) * o.price;
+  });
+  var n = el("div", "net");
+  n.appendChild(el("span", null, net >= 0 ? "Net credit per unit" : "Net debit per unit"));
+  n.appendChild(el("span", null, Math.abs(net).toFixed(2)));
+  card.appendChild(n);
+  out.appendChild(card);
+
+  var lab = el("label"), cb = document.createElement("input");
+  cb.type = "checkbox";
+  lab.appendChild(cb);
+  lab.appendChild(el("span", null, "I've reviewed this order. Buy legs go first so each short leg is hedged; if a sell leg doesn't fill, I'll fix or cancel it in Kite."));
+  out.appendChild(lab);
+
+  var btn = el("button", null, "Open in Kite");
+  btn.disabled = true;
+  cb.addEventListener("change", function () { btn.disabled = !cb.checked; });
+  btn.addEventListener("click", function () {
+    var f = document.createElement("form");
+    f.method = "post"; f.action = "https://kite.zerodha.com/connect/basket";
+    [["api_key", params.k], ["data", JSON.stringify(orders)]].forEach(function (p) {
+      var i = document.createElement("input"); i.type = "hidden"; i.name = p[0]; i.value = p[1]; f.appendChild(i);
+    });
+    document.body.appendChild(f); f.submit();
+  });
+  out.appendChild(btn);
+})();
+</script>
+</body>
+</html>
